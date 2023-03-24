@@ -21,6 +21,14 @@ static flecs::entity create_player_fleer(flecs::entity e)
   return e;
 }
 
+
+static flecs::entity create_archer(flecs::entity e)
+{
+  e.set(DmapWeights{{{"archer_map", {1.f, 1.f}}}});
+  return e;
+}
+
+
 static flecs::entity create_hive_follower(flecs::entity e)
 {
   e.set(DmapWeights{{{"hive_map", {1.f, 1.f}}}});
@@ -126,7 +134,7 @@ static Position find_free_dungeon_tile(flecs::world &ecs)
   return {0, 0};
 }
 
-static flecs::entity create_monster(flecs::world &ecs, Color col, const char *texture_src)
+static flecs::entity create_melee_monster(flecs::world &ecs, Color col, const char *texture_src)
 {
   Position pos = find_free_dungeon_tile(ecs);
 
@@ -144,6 +152,27 @@ static flecs::entity create_monster(flecs::world &ecs, Color col, const char *te
     .set(MeleeDamage{20.f})
     .set(Blackboard{});
 }
+
+static flecs::entity create_range_monster(flecs::world &ecs, Color col, const char *texture_src)
+{
+  Position pos = find_free_dungeon_tile(ecs);
+
+  flecs::entity textureSrc = ecs.entity(texture_src);
+  return ecs.entity()
+    .set(Position{pos.x, pos.y})
+    .set(MovePos{pos.x, pos.y})
+    .set(Hitpoints{100.f})
+    .set(Action{EA_NOP})
+    .set(Color{col})
+    .add<TextureSource>(textureSrc)
+    .set(StateMachine{})
+    .set(Team{1})
+    .set(NumActions{1, 0})
+    .set(RangeDamage{20.f})
+    .set(Blackboard{});
+}
+
+
 
 static void create_player(flecs::world &ecs, const char *texture_src)
 {
@@ -303,6 +332,8 @@ void init_roguelike(flecs::world &ecs)
     .set(Texture2D{LoadTexture("assets/swordsman.png")});
   ecs.entity("minotaur_tex")
     .set(Texture2D{LoadTexture("assets/minotaur.png")});
+  ecs.entity("archer_tex")
+    .set(Texture2D{LoadTexture("assets/archer.png")});
 
   ecs.observer<Texture2D>()
     .event(flecs::OnRemove)
@@ -311,10 +342,17 @@ void init_roguelike(flecs::world &ecs)
         UnloadTexture(texture);
       });
 
-  create_hive_monster(create_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
-  create_hive_monster(create_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
-  create_hive_monster(create_monster(ecs, Color{0x11, 0x11, 0x11, 0xff}, "minotaur_tex"));
-  create_hive(create_player_fleer(create_monster(ecs, Color{0, 255, 0, 255}, "minotaur_tex")));
+  /*
+
+  create_hive_monster(create_melee_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
+  create_hive_monster(create_melee_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
+  create_hive_monster(create_melee_monster(ecs, Color{0x11, 0x11, 0x11, 0xff}, "minotaur_tex"));
+  create_hive(create_player_fleer(create_melee_monster(ecs, Color{0, 255, 0, 255}, "minotaur_tex")));*/
+
+  create_archer(create_range_monster(ecs, Color{255, 255, 255, 255}, "archer_tex"));
+  create_archer(create_range_monster(ecs, Color{255, 255, 255, 255}, "archer_tex"));
+  create_archer(create_range_monster(ecs, Color{255, 255, 255, 255}, "archer_tex"));
+
 
   create_player(ecs, "swordsman_tex");
 
@@ -403,12 +441,14 @@ static void push_to_log(flecs::world &ecs, const char *msg)
 
 static void process_actions(flecs::world &ecs)
 {
-  static auto processActions = ecs.query<Action, Position, MovePos, const MeleeDamage, const Team>();
+  static auto processMeleeActions = ecs.query<Action, Position, MovePos, const MeleeDamage, const Team>();
+  static auto processRangeActions = ecs.query<Action, Position, MovePos, const RangeDamage, const Team>();
   static auto processHeals = ecs.query<Action, Hitpoints>();
   static auto checkAttacks = ecs.query<const MovePos, Hitpoints, const Team>();
   // Process all actions
   ecs.defer([&]
   {
+
     processHeals.each([&](Action &a, Hitpoints &hp)
     {
       if (a.action != EA_HEAL_SELF)
@@ -418,7 +458,7 @@ static void process_actions(flecs::world &ecs)
       hp.hitpoints += 10.f;
 
     });
-    processActions.each([&](flecs::entity entity, Action &a, Position &pos, MovePos &mpos, const MeleeDamage &dmg, const Team &team)
+    processMeleeActions.each([&](flecs::entity entity, Action &a, Position &pos, MovePos &mpos, const MeleeDamage &dmg, const Team &team)
     {
       Position nextPos = move_pos(pos, a.action);
       bool blocked = !dungeon::is_tile_walkable(ecs, nextPos);
@@ -439,8 +479,38 @@ static void process_actions(flecs::world &ecs)
       else
         mpos = nextPos;
     });
+
+    processRangeActions.each([&](flecs::entity entity, Action &a, Position &pos, MovePos &mpos, const RangeDamage &dmg, const Team &team)
+    {
+      Position nextPos = move_pos(pos, a.action);
+      bool blocked = !dungeon::is_tile_walkable(ecs, nextPos);
+
+      checkAttacks.each([&](flecs::entity enemy, const MovePos &epos, Hitpoints &hp, const Team &enemy_team)
+      {
+        if (entity != enemy && round(dist(pos, epos)) == 4)
+        {
+          if (team.team != enemy_team.team)
+          {
+            push_to_log(ecs, "damaged entity");
+            hp.hitpoints -= dmg.damage;
+          }
+        }
+      });
+      if (blocked)
+        a.action = EA_NOP;
+      else
+        mpos = nextPos;
+
+    });
+
     // now move
-    processActions.each([&](Action &a, Position &pos, MovePos &mpos, const MeleeDamage &, const Team&)
+    processMeleeActions.each([&](Action &a, Position &pos, MovePos &mpos, const MeleeDamage &, const Team&)
+    {
+      pos = mpos;
+      a.action = EA_NOP;
+    });
+
+    processRangeActions.each([&](Action &a, Position &pos, MovePos &mpos, const RangeDamage &, const Team&)
     {
       pos = mpos;
       a.action = EA_NOP;
@@ -560,15 +630,21 @@ void process_turn(flecs::world &ecs)
     ecs.entity("flee_map")
       .set(DijkstraMapData{fleeMap});
 
+      
+    std::vector<float> archerMap;
+    dmaps::gen_player_archer_map(ecs, archerMap);
+    ecs.entity("archer_map")
+      .set(DijkstraMapData{archerMap});
+
     std::vector<float> hiveMap;
     dmaps::gen_hive_pack_map(ecs, hiveMap);
     ecs.entity("hive_map")
       .set(DijkstraMapData{hiveMap});
 
-    //ecs.entity("flee_map").add<VisualiseMap>();
-    ecs.entity("hive_follower_sum")
+    ecs.entity("archer_map").add<VisualiseMap>();
+    /*ecs.entity("hive_follower_sum")
       .set(DmapWeights{{{"hive_map", {1.f, 1.f}}, {"approach_map", {1.8f, 0.8f}}}})
-      .add<VisualiseMap>();
+      .add<VisualiseMap>();*/
   }
 }
 

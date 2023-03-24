@@ -92,6 +92,78 @@ void dmaps::gen_player_flee_map(flecs::world &ecs, std::vector<float> &map)
   });
 }
 
+void dmaps::gen_player_archer_map(flecs::world &ecs, std::vector<float> &map)
+{
+
+  int const shooting_range = 4;
+  
+  /*gen_player_approach_map(ecs, map);
+  for (float &v : map)
+    if (v < invalid_tile_value)
+      v = abs(v - shooting_range);
+        
+  query_dungeon_data(ecs, [&](const DungeonData &dd)
+  {
+    process_dmap(map, dd);
+  });*/
+
+
+
+  query_dungeon_data(ecs, [&](const DungeonData &dd)
+  {
+    init_tiles(map, dd);
+    query_characters_positions(ecs, [&](const Position &pos, const Team &t)
+    {
+      if (t.team == 0)
+        for (int i =0;i<shooting_range;i++)
+          for (int dx=-1;dx<2;dx+=2)
+            for (int dy=-1;dy<2;dy+=2)
+            {
+
+                int x = pos.x + ((dy != dx ? shooting_range*dy : 0) + i*dx);
+                int y = pos.y + ((dy == dx ? -shooting_range*dx : 0) + i*dy);
+
+
+                if (x < dd.width && y < dd.width && x >= 0 && y >= 0)
+                {
+
+                  int range_coords = y * dd.width + x;
+
+                  if (dd.tiles[range_coords] == dungeon::floor)
+                  {
+                      bool has_obstacle = false;
+
+                      for (int j=0;j<shooting_range;j++)
+                      {
+                          int check_x = round((float)pos.x + (float)j/(float)shooting_range*((float)x-pos.x));
+                          int check_y = round((float)pos.y + (float)j/(float)shooting_range*((float)y-pos.y));
+
+
+                          int check_coords = check_y * dd.width + check_x; 
+                          if (dd.tiles[check_coords] != dungeon::floor)
+                          {
+                             has_obstacle = true;
+                             break;
+                          }
+                      }
+
+                      if (!has_obstacle)
+                        map[range_coords] = 0.f;
+                  }
+                      
+                }
+
+
+
+            }
+    });
+    process_dmap(map, dd);
+  });
+
+
+
+}
+
 void dmaps::gen_hive_pack_map(flecs::world &ecs, std::vector<float> &map)
 {
   static auto hiveQuery = ecs.query<const Position, const Hive>();

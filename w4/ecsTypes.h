@@ -167,4 +167,16 @@ struct DmapWeights
   std::unordered_map<std::string, WtData> weights;
 };
 
+enum DmapFuncType
+{
+  DF_LINEAR = 0, // x*a
+  DF_EXP = 1, // a^x
+  DF_POW = 2 // x^a
+};
+struct DmapFunc
+{
+    DmapFuncType type;
+    float a;
+};
+
 struct Hive {};

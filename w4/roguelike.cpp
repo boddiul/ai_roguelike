@@ -348,7 +348,8 @@ void init_roguelike(flecs::world &ecs)
   create_hive_monster(create_melee_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
   create_hive_monster(create_melee_monster(ecs, Color{0x11, 0x11, 0x11, 0xff}, "minotaur_tex"));
   create_hive(create_player_fleer(create_melee_monster(ecs, Color{0, 255, 0, 255}, "minotaur_tex")));*/
-
+  create_player_fleer(create_melee_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
+  
   create_archer(create_range_monster(ecs, Color{255, 255, 255, 255}, "archer_tex"));
   create_archer(create_range_monster(ecs, Color{255, 255, 255, 255}, "archer_tex"));
   create_archer(create_range_monster(ecs, Color{255, 255, 255, 255}, "archer_tex"));
@@ -620,24 +621,29 @@ void process_turn(flecs::world &ecs)
     }
     process_actions(ecs);
 
+
+    DmapFunc defaultFunc = {
+      DF_LINEAR, 1.0
+    };
+
     std::vector<float> approachMap;
-    dmaps::gen_player_approach_map(ecs, approachMap);
+    dmaps::gen_player_approach_map(ecs, approachMap, defaultFunc);
     ecs.entity("approach_map")
       .set(DijkstraMapData{approachMap});
 
     std::vector<float> fleeMap;
-    dmaps::gen_player_flee_map(ecs, fleeMap);
+    dmaps::gen_player_flee_map(ecs, fleeMap, defaultFunc);
     ecs.entity("flee_map")
       .set(DijkstraMapData{fleeMap});
 
       
     std::vector<float> archerMap;
-    dmaps::gen_player_archer_map(ecs, archerMap);
+    dmaps::gen_player_archer_map(ecs, archerMap, defaultFunc);
     ecs.entity("archer_map")
       .set(DijkstraMapData{archerMap});
 
     std::vector<float> hiveMap;
-    dmaps::gen_hive_pack_map(ecs, hiveMap);
+    dmaps::gen_hive_pack_map(ecs, hiveMap, defaultFunc);
     ecs.entity("hive_map")
       .set(DijkstraMapData{hiveMap});
 
